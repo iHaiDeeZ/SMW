@@ -2,7 +2,7 @@
 # Maintainers (WSL): SMW Maker's release zip from maker/build-bundle.sh's tools.
 #   maker/pack.sh <bundle dir> [out dir]    -> <out>/SMW-Maker-v<VERSION>.zip
 #
-#   SMW-Maker/SMW-Maker.exe       the app (maker/SMW-Maker.cs, built with Windows' own C# compiler through WSL interop)
+#   SMW-Maker/SMW-Maker.exe       the app (maker/SMW-Maker.cs, built with Windows' own C# compiler: maker/build-exe.cmd)
 #   SMW-Maker/smw/                this repository's build files and maker/smw_maker.py (the pipeline)
 #   SMW-Maker/src/wonder/         upstream at patches/BASE.txt with patches/wonder-ps4.patch (its docs left out)
 #   SMW-Maker/tools/              the bundle
@@ -31,9 +31,14 @@ git -C "$W/src/wonder-release" archive HEAD | tar -x -C "$S/src/wonder" --exclud
 cp -r "$BUNDLE/tools" "$S/tools"
 cp "$HERE/THIRD-PARTY.txt" "$S/THIRD-PARTY.txt"
 
-# The app, with the C# compiler of Windows' .NET Framework 4 (WSL runs Windows programs).
-WIN_OUT="$(wslpath -w "$S")"
-( cd "$HERE" && cmd.exe /c "build-exe.cmd $WIN_OUT" ) | tr -d '\r'
+# The app, with the C# compiler of Windows' .NET Framework 4: SMW_MAKER_EXE names one built with maker/build-exe.cmd,
+# else it is built here (needs WSL's interop, which runs Windows programs).
+if [ -n "${SMW_MAKER_EXE:-}" ]; then
+    cp "$SMW_MAKER_EXE" "$S/SMW-Maker.exe"
+else
+    WIN_OUT="$(wslpath -w "$S")"
+    ( cd "$HERE" && cmd.exe /c "build-exe.cmd $WIN_OUT" ) | tr -d '\r'
+fi
 [ -f "$S/SMW-Maker.exe" ] || { echo "SMW-Maker.exe was not built" >&2; exit 1; }
 
 Z="$OUT/SMW-Maker-v$VER.zip"
