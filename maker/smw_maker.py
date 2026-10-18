@@ -11,6 +11,7 @@ steps, "build N%" the compile, everything else is the log. Your keys are only re
 """
 import argparse
 import ctypes
+import hashlib
 import os
 import shutil
 import subprocess
@@ -81,7 +82,7 @@ def run(cmd, cwd=None, env=None, filt=None, log=None):
     p = subprocess.Popen([str(c) for c in cmd], cwd=cwd, env=env or clean_env(), stdout=subprocess.PIPE,
                          stderr=subprocess.STDOUT, creationflags=flags)
     buf = b""
-    logf = open(log, "w", encoding="utf-8", errors="replace") if log else None
+    logf = open(log, "w", encoding="utf-8", errors="replace", buffering=1) if log else None
     tail = []
     while True:
         chunk = p.stdout.read1(65536) if hasattr(p.stdout, "read1") else p.stdout.read(4096)
@@ -152,11 +153,16 @@ class Work:
 
     def prepare_source(self):
         """Upstream's patched source, copied from SMW Maker once per SMW version (the game's files under private/ stay)."""
+        if "NX_PS4" not in open(os.path.join(UPSTREAM, "CMakeLists.txt"), encoding="utf-8").read():
+            fail(f"{UPSTREAM} is not upstream with the PS4 port: download SMW Maker again")
         stamp = os.path.join(self.src, ".smw-maker-source")
-        want = open(os.path.join(SMW, "patches", "BASE.txt")).read().strip() + " " + version()
+        patch = open(os.path.join(SMW, "patches", "wonder-ps4.patch"), "rb").read()
+        want = " ".join((open(os.path.join(SMW, "patches", "BASE.txt")).read().strip(), version(),
+                         hashlib.sha256(patch).hexdigest()[:16]))
         if os.path.exists(stamp) and open(stamp).read().strip() == want:
             return
         say("copying upstream's source (with the PS4 port) into the work folder")
+        shutil.rmtree(os.path.join(self.root, "build"), ignore_errors=True)  # configured for the old source
         for name in os.listdir(UPSTREAM):
             s, d = os.path.join(UPSTREAM, name), os.path.join(self.src, name)
             if os.path.isdir(d) and name != "private":

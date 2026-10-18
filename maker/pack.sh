@@ -24,9 +24,11 @@ git -C "$REPO" archive HEAD toolchain port sce_sys scripts patches VERSION LICEN
     | tar -x -C "$S/smw"
 
 # Upstream with the PS4 port, from a clean clone (scripts/clone-wonder.sh), without its docs.
-WONDER_SRC="$W/src/wonder-release" bash "$REPO/scripts/clone-wonder.sh" >/dev/null
+WONDER_SRC="$W/src/wonder-release" SMW_SOURCE_RESET=1 bash "$REPO/scripts/clone-wonder.sh" >/dev/null
 mkdir -p "$S/src/wonder"
 git -C "$W/src/wonder-release" archive HEAD | tar -x -C "$S/src/wonder" --exclude=docs
+# It must be the port: the PS4 branch of upstream's CMakeLists.txt.
+grep -q "NX_PS4" "$S/src/wonder/CMakeLists.txt" || { echo "src/wonder is not the PS4 port" >&2; exit 1; }
 
 cp -r "$BUNDLE/tools" "$S/tools"
 cp "$HERE/THIRD-PARTY.txt" "$S/THIRD-PARTY.txt"

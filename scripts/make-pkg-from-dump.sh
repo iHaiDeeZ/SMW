@@ -84,7 +84,7 @@ VKH="$PS4_BUILD_ROOT/third_party/Vulkan-Headers-1.4.357"
 echo "SDK: ready"
 
 step "3/5 the game's code (your dump and keys)"
-bash "$S/clone-wonder.sh"
+SMW_SOURCE_RESET=1 bash "$S/clone-wonder.sh"
 if [ -f "$G/analysis/main.bin" ] && [ -f "$G/exefs/main" ] && [ -f "$G/exefs/sdk" ]; then
     echo "already imported: $G"
 else

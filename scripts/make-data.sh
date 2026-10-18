@@ -46,7 +46,7 @@ if [ ${#need[@]} -gt 0 ]; then
     sudo apt-get install -y -qq git cmake ninja-build g++ curl python3 python3-venv ca-certificates
 fi
 command -v spirv-val >/dev/null || echo "(spirv-tools is not installed: the shaders are translated without the extra check)"
-bash "$HERE/clone-wonder.sh"
+SMW_SOURCE_RESET=1 bash "$HERE/clone-wonder.sh"
 
 step "2/4 import (your dump and keys)"
 IN="$WORK/input"
