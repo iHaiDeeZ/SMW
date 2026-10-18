@@ -73,16 +73,19 @@ with your `prod.keys` and `title.keys`, all from your own Switch.
 
 1. Download **`SMW-Data-Tool-vXX.XX.zip`** from the [releases page](https://github.com/iHaiDeeZ/SMW/releases/latest)
    and unzip it.
-2. Double-click **`windows/SMW-Data-Tool.cmd`** and pick your dump, `prod.keys`, `title.keys` and a folder with
-   about 5 GB free.
-3. Wait 20-40 minutes. The tool decrypts your dump with upstream's importer, translates the game's 12,751 shaders,
-   and lays out an **`SMW`** folder.
-4. Give it your PS4's FTP address to upload the folder for you, or copy the **contents** of `SMW` to
-   **`/data/SMW`** yourself (FileZilla).
+2. Double-click **`windows/SMW-Data-Tool.cmd`**. A window opens: press **Browse...** on each row to pick your
+   dump, `prod.keys` and `title.keys` in File Explorer (keys next to the dump are filled in for you), and a folder
+   with about 5 GB free.
+3. Optionally type your PS4's FTP address (for example `192.168.0.90:2121`), then press **Start**.
+4. Wait 20-40 minutes while the log and progress bar follow along. The tool decrypts your dump with upstream's
+   importer, translates the game's 12,751 shaders, and lays out an **`SMW`** folder, then uploads it to
+   **`/data/SMW`** if you gave an address. Otherwise copy the **contents** of `SMW` there yourself (FileZilla), or
+   press **Upload only** later. An interrupted upload resumes where it stopped.
+
+<p align="center"><img src="docs/images/data-tool.png" alt="The SMW data tool" width="560"></p>
 
 > **First time with WSL?** Open PowerShell as administrator, run `wsl --install -d Ubuntu`, restart, open Ubuntu
-> once to create your user, then start the tool. It installs the few Linux tools it needs and asks for that
-> password once.
+> once to create your user, then start the tool. It installs the few Linux tools it needs by itself.
 
 ### 2. The package
 
