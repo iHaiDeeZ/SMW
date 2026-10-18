@@ -18,7 +18,14 @@ SMW is a port. Nearly everything that makes the game run is other people's work.
   [Crema](https://github.com/iHaiDeeZ/Crema). `port/mesa/ac_ps4_drm.c` is that port's winsys.
 - **[OpenOrbis](https://github.com/OpenOrbis)** (GPL-3.0 toolchain; its libraries under their own terms) and
   **[PacBrew](https://github.com/PacBrew)**: the PS4 toolchains. `toolchain/` comes from
-  [love-ps4](https://github.com/Mari0/love-ps4)'s setup by way of Resonance, DolphinPS4 and Crema.
+  [love-ps4](https://github.com/Mari0/love-ps4)'s setup by way of Resonance, DolphinPS4 and Crema. The package
+  build (`scripts/install-build-deps.sh`) downloads PacBrew's packages from its own repository; they are not
+  included here.
+- **[LLVM](https://llvm.org)** (Apache-2.0 WITH LLVM-exception): clang 21 builds the eboot, and libc++ 21 is in
+  the [SDK release](https://github.com/iHaiDeeZ/SMW/releases/tag/sdk-1) with the sysroot's other open-source
+  libraries (listed in its `NOTICE.txt`).
+- **[Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers)** (Apache-2.0 / MIT): downloaded by the
+  build.
 - **[Resonance](https://github.com/iHaiDeeZ/Resonance)**, **[DolphinPS4](https://github.com/iHaiDeeZ/DolphinPS4)**,
   **[M33](https://github.com/iHaiDeeZ/M33)** and **[Crema](https://github.com/iHaiDeeZ/Crema)** by ShiroKlein:
   the PS4 runtime in `port/` (heap, crash and hang logs, thread placement) and the VideoOut presentation.

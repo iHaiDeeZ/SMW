@@ -52,15 +52,22 @@ public class SmwWorker {
         try { if (proc != null && !proc.HasExited) proc.Kill(); } catch {}
     }
 
-    // Every file under `folder` to ftp://host:port/dest, folders made as needed; a file already there with the same
-    // size is skipped, so starting again resumes. Lines: "progress <done> <total>", then "upload done" or an error.
+    // Every file under `folder` (or the one file `folder` names) to ftp://host:port/dest, folders made as needed; a
+    // file already there with the same size is skipped, so starting again resumes. Lines: "progress <done> <total>",
+    // then "upload done" or an error.
     public void Upload(string folder, string host, int port, string dest) {
         Running = true;
         cancelled = false;
         ExitCode = 0;
         Thread t = new Thread(() => {
             try {
-                string[] files = Directory.GetFiles(folder, "*", SearchOption.AllDirectories);
+                string[] files;
+                if (File.Exists(folder)) {
+                    files = new string[] { folder };
+                    folder = Path.GetDirectoryName(folder);
+                } else {
+                    files = Directory.GetFiles(folder, "*", SearchOption.AllDirectories);
+                }
                 string root = "ftp://" + host + ":" + port + dest.TrimEnd('/');
                 HashSet<string> made = new HashSet<string>();
                 MakeDir(root, made);
@@ -139,7 +146,7 @@ function Quote($s) { return "'" + ($s -replace "'", "'\''") + "'" }
 $grey = [System.Drawing.Color]::FromArgb(120, 120, 130)
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'SMW data tool'
-$form.ClientSize = New-Object System.Drawing.Size(760, 640)
+$form.ClientSize = New-Object System.Drawing.Size(760, 696)
 $form.StartPosition = 'CenterScreen'
 $form.Font = New-Object System.Drawing.Font('Segoe UI', 10)
 $form.FormBorderStyle = 'FixedSingle'
@@ -157,7 +164,7 @@ function New-Label($text, $x, $y, $w, $h, $size = 10, $color = $null, $style = '
     return $l
 }
 [void](New-Label 'SMW data tool' 20 12 400 34 16 $null 'Bold')
-[void](New-Label "Turns your own Super Mario Bros. Wonder 1.0.0 dump into the game data for /data/SMW on your PS4.`nAll files come from your own Switch; nothing is sent anywhere except, if you ask, to your own PS4." 22 50 720 40 9.5 ([System.Drawing.Color]::FromArgb(80, 80, 90)))
+[void](New-Label "Turns your own Super Mario Bros. Wonder 1.0.0 dump into the game data for /data/SMW and your own SMW package.`nAll files come from your own Switch; nothing is sent anywhere except, if you ask, to your own PS4." 22 50 720 40 9.5 ([System.Drawing.Color]::FromArgb(80, 80, 90)))
 
 $rows = @{}
 function Add-Row($key, $label, $y, $hint) {
@@ -177,19 +184,32 @@ function Add-Row($key, $label, $y, $hint) {
 Add-Row 'game' 'Game dump' 100 'Super Mario Bros. Wonder 1.0.0, .nsp or .xci (base game, no update)'
 Add-Row 'prod' 'prod.keys' 150 ''
 Add-Row 'title' 'title.keys' 190 'Optional: leave it empty if you have none'
-Add-Row 'out' 'Output folder' 240 'The SMW folder is made here (about 5 GB)'
+Add-Row 'out' 'Output folder' 240 'The SMW folder (about 5 GB) and your package go here'
 
 [void](New-Label 'PS4 FTP address' 22 294 150 24)
 $ftp = New-Object System.Windows.Forms.TextBox
 $ftp.Location = New-Object System.Drawing.Point(175, 290)
 $ftp.Size = New-Object System.Drawing.Size(200, 26)
 $form.Controls.Add($ftp)
-[void](New-Label 'Optional, for example 192.168.0.90:2121 (GoldHEN FTP): the data goes to /data/SMW when it is made' 175 317 560 18 8.5 $grey)
+[void](New-Label 'Optional, for example 192.168.0.90:2121 (GoldHEN FTP): the results go to /data/SMW and /data/pkg' 175 317 560 18 8.5 $grey)
+
+function New-Check($text, $y, $checked) {
+    $c = New-Object System.Windows.Forms.CheckBox
+    $c.Text = $text
+    $c.Checked = $checked
+    $c.Location = New-Object System.Drawing.Point(175, $y)
+    $c.Size = New-Object System.Drawing.Size(560, 24)
+    $form.Controls.Add($c)
+    return $c
+}
+$doData = New-Check 'Make the game data (the SMW folder for /data/SMW)' 342 $true
+$doPkg = New-Check 'Build my package (SMW-vXX.XX.pkg, from the same dump)' 366 $false
+[void](New-Label 'The package takes an hour or two more and ~40 GB free on the WSL drive; it is your game: never share it' 193 390 545 18 8.5 $grey)
 
 function New-Button($text, $x, $w, $bold = $false) {
     $b = New-Object System.Windows.Forms.Button
     $b.Text = $text
-    $b.Location = New-Object System.Drawing.Point($x, 348)
+    $b.Location = New-Object System.Drawing.Point($x, 418)
     $b.Size = New-Object System.Drawing.Size($w, 36)
     if ($bold) {
         $b.Font = New-Object System.Drawing.Font('Segoe UI', 11, [System.Drawing.FontStyle]::Bold)
@@ -204,9 +224,9 @@ $cancel = New-Button 'Cancel' 172 100
 $cancel.Enabled = $false
 $uploadOnly = New-Button 'Upload only' 282 120
 
-$status = New-Label 'Pick your files, then Start. It takes 20-40 minutes.' 22 396 718 22
+$status = New-Label 'Pick your files, then Start. The game data takes 20-40 minutes.' 22 466 718 22
 $bar = New-Object System.Windows.Forms.ProgressBar
-$bar.Location = New-Object System.Drawing.Point(22, 420)
+$bar.Location = New-Object System.Drawing.Point(22, 490)
 $bar.Size = New-Object System.Drawing.Size(718, 18)
 $form.Controls.Add($bar)
 $log = New-Object System.Windows.Forms.TextBox
@@ -214,7 +234,7 @@ $log.Multiline = $true
 $log.ReadOnly = $true
 $log.ScrollBars = 'Vertical'
 $log.Font = New-Object System.Drawing.Font('Consolas', 9)
-$log.Location = New-Object System.Drawing.Point(22, 446)
+$log.Location = New-Object System.Drawing.Point(22, 516)
 $log.Size = New-Object System.Drawing.Size(718, 176)
 $log.BackColor = [System.Drawing.Color]::FromArgb(24, 26, 34)
 $log.ForeColor = [System.Drawing.Color]::FromArgb(220, 224, 235)
@@ -253,36 +273,105 @@ $rows['game'].Text.Add_TextChanged({
 })
 
 # ---- running ----------------------------------------------------------------------------------------------------------
+# A run is a queue of jobs, one at a time: tools (as WSL's root user), data, pkg, then the uploads.
 $worker = New-Object SmwWorker
-$script:phase = 'idle'   # idle, tools, data, upload
+$script:queue = New-Object System.Collections.Queue
+$script:job = $null
 $script:distro = $null
-$script:smw = $null
-$script:dataCmd = $null
-$steps = @{ '1/4' = 5; '2/4' = 10; '3/4' = 40; '4/4' = 85 }
+$script:root = $null
+$script:out = $null
+$script:jobArgs = ''
+$version = (Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'VERSION') -TotalCount 1).Trim()
+$dataSteps = @{ '1' = 5; '2' = 10; '3' = 40; '4' = 85 }
+$pkgSteps = @{ '1' = 2; '2' = 4; '3' = 8; '4' = 30; '5' = 96 }
+$done = New-Object System.Collections.ArrayList
 
 function Set-Busy($busy) {
     foreach ($r in $rows.Values) { $r.Text.Enabled = -not $busy; $r.Button.Enabled = -not $busy }
-    $ftp.Enabled = -not $busy
-    $start.Enabled = -not $busy
-    $uploadOnly.Enabled = -not $busy
+    foreach ($c in $ftp, $doData, $doPkg, $start, $uploadOnly) { $c.Enabled = -not $busy }
     $cancel.Enabled = $busy
 }
-
-function Start-Upload($folder) {
+function Ftp-Target {
     $parts = $ftp.Text.Trim() -split ':', 2
     $port = 2121
     if ($parts.Count -gt 1 -and $parts[1]) { $port = [int]$parts[1] }
-    $script:phase = 'upload'
-    $status.Text = "Uploading to $($parts[0]):$port /data/SMW ..."
+    return @($parts[0], $port)
+}
+function Pkg-Path { return (Join-Path $script:out "SMW-v$version.pkg") }
+function Start-Wsl($asRoot, $cmd) {
+    $user = ''; if ($asRoot) { $user = '-u root ' }
+    $worker.Start('wsl.exe', "-d `"$($script:distro)`" $user-- bash -lc `"$($cmd -replace '"', '\"')`"")
+}
+
+function Run-Next {
+    if ($script:queue.Count -eq 0) {
+        $script:job = $null
+        Set-Busy $false
+        $bar.Value = 100
+        $status.Text = 'Done.'
+        Tell ("Done.`n`n" + ($done -join "`n`n"))
+        return
+    }
+    $script:job = $script:queue.Dequeue()
     $bar.Value = 0
-    Log "== upload to $($parts[0]):$port /data/SMW (files already there are skipped)"
-    Set-Busy $true
-    $worker.Upload($folder, $parts[0], $port, '/data/SMW')
+    switch ($script:job) {
+        'tools' {
+            $status.Text = 'Checking the Linux tools...'
+            if ($script:queue.Contains('pkg')) {
+                # clang 21, PacBrew's PS4 toolchain and the rest, once (the first time downloads ~350 MB)
+                Start-Wsl $true ('bash ' + (Quote "$($script:root)/scripts/install-build-deps.sh"))
+            } else {
+                Start-Wsl $true 'export DEBIAN_FRONTEND=noninteractive; missing=0; for c in git cmake ninja c++ curl python3; do command -v $c >/dev/null || missing=1; done; python3 -c "import venv, ensurepip" 2>/dev/null || missing=1; if [ $missing = 1 ]; then echo "installing the Linux tools..."; apt-get update -qq && apt-get install -y -qq git cmake ninja-build g++ curl python3 python3-venv ca-certificates; else echo "Linux tools: ready"; fi'
+            }
+        }
+        'data' {
+            $status.Text = 'Making the game data...'
+            Start-Wsl $false ('bash ' + (Quote "$($script:root)/scripts/make-data.sh") + $script:jobArgs)
+        }
+        'pkg' {
+            $status.Text = 'Building your package...'
+            Start-Wsl $false ('bash ' + (Quote "$($script:root)/scripts/make-pkg-from-dump.sh") + $script:jobArgs)
+        }
+        'up-data' {
+            $t = Ftp-Target
+            $status.Text = "Uploading the game data to $($t[0]):$($t[1]) /data/SMW ..."
+            Log "== upload to $($t[0]):$($t[1]) /data/SMW (files already there are skipped)"
+            $worker.Upload((Join-Path $script:out 'SMW'), $t[0], $t[1], '/data/SMW')
+        }
+        'up-pkg' {
+            $t = Ftp-Target
+            $status.Text = "Uploading the package to $($t[0]):$($t[1]) /data/pkg ..."
+            Log "== upload to $($t[0]):$($t[1]) /data/pkg"
+            $worker.Upload((Pkg-Path), $t[0], $t[1], '/data/pkg')
+        }
+    }
+}
+
+# What a finished job leaves behind: a line for the final message ('' for none), or $null when it failed.
+function Job-Result($job) {
+    if ($worker.ExitCode -ne 0) { return $null }
+    switch ($job) {
+        'tools' { return '' }
+        'data' {
+            $smw = Join-Path $script:out 'SMW'
+            if (-not (Test-Path -LiteralPath (Join-Path $smw 'analysis\main.bin'))) { return $null }
+            if ($ftp.Text.Trim()) { return '' }
+            return "The game data: $smw`nCopy the CONTENTS of that folder to /data/SMW on your PS4."
+        }
+        'pkg' {
+            if (-not (Test-Path -LiteralPath (Pkg-Path))) { return $null }
+            if ($ftp.Text.Trim()) { return '' }
+            return "Your package: $(Pkg-Path)`nPut it in /data/pkg on your PS4 and install it with GoldHEN's Package Installer. Never share it."
+        }
+        'up-data' { return 'The game data is on your PS4 in /data/SMW.' }
+        'up-pkg' { return "The package is on your PS4 in /data/pkg: install it with GoldHEN's Package Installer." }
+    }
 }
 
 $start.Add_Click({
     $game = $rows['game'].Text.Text.Trim(); $prod = $rows['prod'].Text.Text.Trim()
     $titleKeys = $rows['title'].Text.Text.Trim(); $out = $rows['out'].Text.Text.Trim()
+    if (-not $doData.Checked -and -not $doPkg.Checked) { Tell 'Tick the game data, the package, or both.' 'Warning'; return }
     if (-not $game -or -not (Test-Path -LiteralPath $game)) { Tell 'Pick your game dump (.nsp or .xci).' 'Warning'; return }
     if (-not $prod -or -not (Test-Path -LiteralPath $prod)) { Tell 'Pick your prod.keys.' 'Warning'; return }
     if ($titleKeys -and -not (Test-Path -LiteralPath $titleKeys)) { Tell 'title.keys was not found (leave it empty if you have none).' 'Warning'; return }
@@ -292,41 +381,47 @@ $start.Add_Click({
         Tell "WSL with Ubuntu is needed. Open PowerShell as administrator and run:`n`n    wsl --install -d Ubuntu`n`nRestart the PC, open Ubuntu once to create your user, then start this tool again." 'Warning'
         return
     }
-    $root = To-Wsl $script:distro (Split-Path -Parent $PSScriptRoot)
+    $script:root = To-Wsl $script:distro (Split-Path -Parent $PSScriptRoot)
     $wGame = To-Wsl $script:distro $game; $wProd = To-Wsl $script:distro $prod; $wOut = To-Wsl $script:distro $out
     $wTitle = $null; if ($titleKeys) { $wTitle = To-Wsl $script:distro $titleKeys }
-    if (-not ($root -and $wGame -and $wProd -and $wOut)) { Tell 'WSL cannot reach one of the files or folders.' 'Warning'; return }
-    $script:smw = Join-Path $out 'SMW'
-    $cmd = 'bash ' + (Quote "$root/scripts/make-data.sh") + ' --game ' + (Quote $wGame) + ' --prod ' + (Quote $wProd) + ' --out ' + (Quote $wOut)
-    if ($wTitle) { $cmd += ' --title ' + (Quote $wTitle) }
-    $script:dataCmd = $cmd
+    if (-not ($script:root -and $wGame -and $wProd -and $wOut)) { Tell 'WSL cannot reach one of the files or folders.' 'Warning'; return }
+    $script:out = $out
+    $script:jobArgs = ' --game ' + (Quote $wGame) + ' --prod ' + (Quote $wProd) + ' --out ' + (Quote $wOut)
+    if ($wTitle) { $script:jobArgs += ' --title ' + (Quote $wTitle) }
+    $script:queue.Clear(); $done.Clear()
+    $script:queue.Enqueue('tools')
+    if ($doData.Checked) { $script:queue.Enqueue('data') }
+    if ($doPkg.Checked) { $script:queue.Enqueue('pkg') }
+    if ($ftp.Text.Trim()) {
+        if ($doData.Checked) { $script:queue.Enqueue('up-data') }
+        if ($doPkg.Checked) { $script:queue.Enqueue('up-pkg') }
+    }
     $log.Clear()
     Log "WSL: $($script:distro)"
-    # The Linux tools first, as WSL's root user (no password to type): git, cmake, ninja, a compiler, python3-venv, curl.
-    $script:phase = 'tools'
-    $status.Text = 'Checking the Linux tools...'
-    $bar.Value = 2
     Set-Busy $true
-    $tools = 'export DEBIAN_FRONTEND=noninteractive; missing=0; for c in git cmake ninja c++ curl python3; do command -v $c >/dev/null || missing=1; done; python3 -c "import venv, ensurepip" 2>/dev/null || missing=1; if [ $missing = 1 ]; then echo "installing the Linux tools..."; apt-get update -qq && apt-get install -y -qq git cmake ninja-build g++ curl python3 python3-venv ca-certificates; else echo "Linux tools: ready"; fi'
-    $worker.Start('wsl.exe', "-d `"$($script:distro)`" -u root -- bash -c `"$($tools -replace '"', '\"')`"")
+    Run-Next
 })
 
 $uploadOnly.Add_Click({
     if (-not $ftp.Text.Trim()) { Tell 'Type your PS4 FTP address first (for example 192.168.0.90:2121).' 'Warning'; return }
     $d = New-Object System.Windows.Forms.FolderBrowserDialog
-    $d.Description = 'The SMW folder this tool made'
+    $d.Description = 'The output folder of this tool (with the SMW folder and/or your package in it)'
     if ($rows['out'].Text.Text) { $d.SelectedPath = $rows['out'].Text.Text }
     if ($d.ShowDialog($form) -ne 'OK') { return }
     $folder = $d.SelectedPath
-    if (-not (Test-Path -LiteralPath (Join-Path $folder 'analysis\main.bin'))) {
-        if (Test-Path -LiteralPath (Join-Path $folder 'SMW\analysis\main.bin')) { $folder = Join-Path $folder 'SMW' }
-        else { Tell 'That is not an SMW data folder (no analysis\main.bin inside).' 'Warning'; return }
-    }
+    if ((Split-Path -Leaf $folder) -eq 'SMW' -and (Test-Path -LiteralPath (Join-Path $folder 'analysis\main.bin'))) { $folder = Split-Path -Parent $folder }
+    $script:out = $folder
+    $script:queue.Clear(); $done.Clear()
+    if (Test-Path -LiteralPath (Join-Path $folder 'SMW\analysis\main.bin')) { $script:queue.Enqueue('up-data') }
+    if (Test-Path -LiteralPath (Pkg-Path)) { $script:queue.Enqueue('up-pkg') }
+    if ($script:queue.Count -eq 0) { Tell "There is no SMW folder or SMW-v$version.pkg in that folder." 'Warning'; return }
     $log.Clear()
-    Start-Upload $folder
+    Set-Busy $true
+    Run-Next
 })
 
 $cancel.Add_Click({
+    $script:queue.Clear()
     $worker.Cancel()
     $status.Text = 'Cancelled.'
 })
@@ -346,52 +441,35 @@ $timer.Add_Tick({
         }
         if ($clean -match 'romfs\s+([\d.]+)%') {  # the importer's meter: in the status line, not the log
             $status.Text = "Decrypting the game: $($Matches[1])%"
-            $bar.Value = [Math]::Min(39, 10 + [int]([double]$Matches[1] * 0.29))
+            if ($script:job -eq 'data') { $bar.Value = [Math]::Min(39, 10 + [int]([double]$Matches[1] * 0.29)) }
             continue
         }
-        if ($clean -match '== (\d/4) (.*)') {
-            $status.Text = "Step $($Matches[1]): $($Matches[2].Trim())"
-            if ($steps.ContainsKey($Matches[1])) { $bar.Value = $steps[$Matches[1]] }
+        if ($clean -match '^build (\d+)%$') {  # make-pkg-from-dump.sh's compile meter
+            $status.Text = "Step 4/5: compiling, $($Matches[1])%"
+            $bar.Value = [Math]::Min(95, 30 + [int]([int]$Matches[1] * 0.65))
+            continue
+        }
+        if ($clean -match '== (\d)/([45]) (.*)') {
+            $status.Text = "Step $($Matches[1])/$($Matches[2]): $($Matches[3].Trim())"
+            $map = $dataSteps; if ($Matches[2] -eq '5') { $map = $pkgSteps }
+            if ($map.ContainsKey($Matches[1])) { $bar.Value = $map[$Matches[1]] }
         }
         if ($clean.Trim()) { Log $clean }
     }
-    if ($worker.Running) { return }
-    if ($script:phase -eq 'tools') {
-        if ($worker.ExitCode -ne 0) {
-            $script:phase = 'idle'; Set-Busy $false
-            $status.Text = 'The Linux tools could not be installed (see the log).'
-            return
-        }
-        $script:phase = 'data'
-        $status.Text = 'Step 1/4: tools'
-        $worker.Start('wsl.exe', "-d `"$($script:distro)`" -- bash -lc `"$($script:dataCmd -replace '"', '\"')`"")
+    if ($worker.Running -or -not $script:job) { return }
+    $finished = $script:job
+    $script:job = $null
+    $result = Job-Result $finished
+    if ($null -eq $result) {
+        $script:queue.Clear()
+        Set-Busy $false
+        if ($finished -like 'up-*') { $status.Text = 'The upload stopped: press Upload only to resume it.' }
+        elseif ($finished -eq 'tools') { $status.Text = 'The Linux tools could not be installed (see the log).' }
+        else { $status.Text = "Stopped (exit code $($worker.ExitCode)): see the log." }
         return
     }
-    if ($script:phase -eq 'data') {
-        $script:phase = 'idle'
-        if ($worker.ExitCode -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $script:smw 'analysis\main.bin'))) {
-            Set-Busy $false
-            $status.Text = "Stopped (exit code $($worker.ExitCode)): see the log."
-            return
-        }
-        $bar.Value = 100
-        if ($ftp.Text.Trim()) { Start-Upload $script:smw; return }
-        Set-Busy $false
-        $status.Text = "Done: $($script:smw). Copy its contents to /data/SMW on your PS4 (or Upload only)."
-        Tell "The game data is ready in:`n`n$($script:smw)`n`nCopy the CONTENTS of that folder to /data/SMW on your PS4, or type its FTP address and press Upload only."
-        return
-    }
-    if ($script:phase -eq 'upload') {
-        $script:phase = 'idle'
-        Set-Busy $false
-        if ($worker.ExitCode -eq 0) {
-            $bar.Value = 100
-            $status.Text = 'Uploaded to /data/SMW. Install the SMW package on your PS4 and start it.'
-            Tell 'The game data is on your PS4 in /data/SMW.'
-        } else {
-            $status.Text = 'The upload stopped: press Upload only to resume it.'
-        }
-    }
+    if ($result) { [void]$done.Add($result) }
+    Run-Next
 })
 $timer.Start()
 $form.Add_FormClosing({ $worker.Cancel() })

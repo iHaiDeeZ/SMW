@@ -69,33 +69,39 @@ You bring your own game: nothing copyrighted is in this repository or its releas
 with Windows 10 or 11 and WSL, and your own **Super Mario Bros. Wonder 1.0.0** dump (`.nsp` or `.xci`, base game)
 with your `prod.keys` and `title.keys`, all from your own Switch.
 
-### 1. The game data
+The data tool makes both halves from your dump: the game data for `/data/SMW` and your own SMW package.
+
+### 1. The game data and your package
 
 1. Download **`SMW-Data-Tool-vXX.XX.zip`** from the [releases page](https://github.com/iHaiDeeZ/SMW/releases/latest)
    and unzip it.
 2. Double-click **`windows/SMW-Data-Tool.cmd`**. A window opens: press **Browse...** on each row to pick your
    dump, `prod.keys` and `title.keys` in File Explorer (keys next to the dump are filled in for you), and a folder
    with about 5 GB free.
-3. Optionally type your PS4's FTP address (for example `192.168.0.90:2121`), then press **Start**.
-4. Wait 20-40 minutes while the log and progress bar follow along. The tool decrypts your dump with upstream's
-   importer, translates the game's 12,751 shaders, and lays out an **`SMW`** folder, then uploads it to
-   **`/data/SMW`** if you gave an address. Otherwise copy the **contents** of `SMW` there yourself (FileZilla), or
-   press **Upload only** later. An interrupted upload resumes where it stopped.
+3. Tick **Build my package** too (the first time, or after an SMW update). Optionally type your PS4's FTP
+   address (for example `192.168.0.90:2121`), then press **Start**.
+4. Wait while the log and progress bar follow along:
+   - **The game data** (20-40 minutes): the tool decrypts your dump with upstream's importer, translates the game's
+     12,751 shaders, and lays out an **`SMW`** folder.
+   - **Your package** (an hour or two, ~40 GB free on the WSL drive, 16 GB of RAM recommended): it fetches the PS4
+     toolchain (PacBrew's OpenOrbis and this project's prebuilt [SDK](https://github.com/iHaiDeeZ/SMW/releases/tag/sdk-1)),
+     recompiles the game's code from your dump and builds **`SMW-vXX.XX.pkg`** in the output folder.
+5. With an FTP address, the `SMW` folder goes to **`/data/SMW`** and the package to **`/data/pkg`**. Otherwise copy
+   the **contents** of `SMW` to `/data/SMW` and the package to `/data/pkg` yourself (FileZilla), or press
+   **Upload only** later. An interrupted upload resumes where it stopped.
+6. Install the package with GoldHEN's **Package Installer** and start **SMW** from the home screen.
 
 <p align="center"><img src="docs/images/data-tool.png" alt="The SMW data tool" width="560"></p>
 
 > **First time with WSL?** Open PowerShell as administrator, run `wsl --install -d Ubuntu`, restart, open Ubuntu
-> once to create your user, then start the tool. It installs the few Linux tools it needs by itself.
+> once to create your user, then start the tool. It installs the Linux tools it needs by itself.
 
-### 2. The package
+The package is built from your dump because its `eboot.bin` is mostly the game's own code, recompiled. That's why
+no release can include it, and why you must never share yours. To build it by hand instead, see
+**[docs/BUILDING.md](docs/BUILDING.md)**.
 
-The SMW package is built from your dump too: its `eboot.bin` is mostly the game's own code, recompiled. That's why
-no release can include it, and why you must never share yours. **[docs/BUILDING.md](docs/BUILDING.md)** walks
-through building it in WSL. It takes about 10 minutes once the PS4 toolchain is set up.
-
-Install your **`SMW-vXX.XX.pkg`** with GoldHEN's **Package Installer** and start **SMW** from the home screen.
-
-**Updating SMW:** build and install the newer package on top of the old one. The game data and your saves in
+**Updating SMW:** download the newer data tool, build the package again (the dump isn't imported twice) and install
+it on top of the old one. The game data and your saves in
 `/data/SMW` stay.
 
 ## Controls

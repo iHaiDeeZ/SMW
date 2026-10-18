@@ -18,9 +18,23 @@ OpenOrbis, and Mesa's RADV driver ported to the PS4 GPU.
   2. [Crema](https://github.com/iHaiDeeZ/Crema)'s Mesa build in `~/cemups4-build/build/mesa` (the newest PS4
      RADV; older builds draw Wonder's lit models black).
 
+## In one step
+
+On a fresh Ubuntu (24.04 or newer, WSL or not), from this repository:
+
+```
+sudo bash scripts/install-build-deps.sh    # once: apt tools, clang 21, PacBrew's toolchain in /opt/pacbrew
+bash scripts/make-pkg-from-dump.sh --game <.nsp/.xci> --prod <prod.keys> --title <title.keys> --out <folder>
+```
+
+`make-pkg-from-dump.sh` downloads the prebuilt sysroot and RADV libraries (the [sdk-1 release](https://github.com/iHaiDeeZ/SMW/releases/tag/sdk-1),
+made by `scripts/make-sdk.sh`, checked by SHA-256), imports and recompiles your dump, builds the eboot and writes
+`<folder>/SMW-v<VERSION>.pkg`. Its work tree is `~/smw-data-tool`, shared with `make-data.sh`. This is what the
+data tool's **Build my package** runs. `scripts/fetch-pacbrew.sh` installs PacBrew's packages without pacman.
+
 ## Steps
 
-Run everything from WSL through `~/smw` (a link to this repository made by the first step): the space in a path
+The same by hand, with the toolchain built yourself. Run everything from WSL through `~/smw` (a link to this repository made by the first step): the space in a path
 such as "PS4 Projects" breaks the linker flags.
 
 ```
