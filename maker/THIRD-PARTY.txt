@@ -1,0 +1,33 @@
+SMW Maker: what is in this folder and where it comes from
+==========================================================
+
+SMW Maker contains no game files, keys or packages. It makes them from your own Super Mario Bros. Wonder 1.0.0 dump,
+on your PC. Never share what it makes.
+
+SMW-Maker.exe, smw/               SMW (github.com/iHaiDeeZ/SMW), MIT. Built by maker/build-bundle.sh and maker/pack.sh.
+src/wonder/                       Super Mario Bros. Wonder Recomp by BelmanteGu (github.com/BelmanteGu/SuperMarioWonderRecomp),
+                                  MIT, at smw/patches/BASE.txt with smw/patches/wonder-ps4.patch applied. Its own
+                                  third-party components keep their licenses (its README).
+
+tools/nximport.exe                upstream's importer (src/wonder/android/wonder/importer), MIT, built with mingw-w64
+                                  (its runtime: MinGW-w64 licenses, ZPL / public domain) and smw/maker/nximport-win's shims.
+tools/python/                     Python 3.14.4 embeddable (python.org), PSF License, with the packages capstone 5.0.9
+                                  (BSD-3-Clause), lz4 4.4.5 (BSD-3-Clause), zstandard 0.25.0 (BSD-3-Clause),
+                                  fonttools 4.67.0 (MIT) and Pillow 12.3.0 (MIT-CMU), from PyPI, unmodified.
+tools/dotnet/                     .NET 10.0.12 runtime for Windows (dot.net), MIT.
+tools/harness/                    upstream's shader harness (tools/maxwell/spirv_harness), MIT, with Ryujinx's shader
+                                  translator from Ryubing (codeberg.org/Software_arch/Ryubing, a82350bb77), MIT, and its
+                                  dependencies (NuGet, MIT).
+tools/pkgtool/                    PkgTool from LibOrbisPkg (github.com/maxton/LibOrbisPkg), MIT, with more room for
+                                  PlayGo hashes (smw/scripts/build-pkgtool.sh).
+tools/llvm/                       LLVM 21.1.8 for Windows (github.com/llvm/llvm-project releases): clang, ld.lld,
+                                  llvm-ar, llvm-ranlib, llvm-readelf and clang's headers. Apache-2.0 WITH LLVM-exception.
+tools/cmake/                      CMake 4.2.3 (cmake.org, BSD-3-Clause) and Ninja 1.12.1 (ninja-build.org, Apache-2.0).
+tools/openorbis/                  OpenOrbis PS4 toolchain files (github.com/OpenOrbis), GPL-3.0 (tools) with its
+                                  libraries under their own terms, as packaged by PacBrew (github.com/PacBrew,
+                                  pacman.mydedibox.fr): headers, libc (musl), libc++ 12, crt, library stubs, link.x,
+                                  the Piglet sample modules, port libraries. bin/create-fself.exe and bin/create-gp4.exe
+                                  are OpenOrbis' create-fself (30d2e10) and create-gp4 (bf8e66e), MIT, built for Windows.
+                                  The sources of all of them are at those addresses.
+tools/sdk/                        SMW's PS4 SDK (github.com/iHaiDeeZ/SMW/releases/tag/sdk-1; its NOTICE.txt lists the
+                                  libraries and licenses) and Vulkan-Headers 1.4.357 (Khronos, Apache-2.0 / MIT).

@@ -9,8 +9,8 @@ SMW is a port. Nearly everything that makes the game run is other people's work.
   tools. SMW applies `patches/wonder-ps4.patch` to it and builds it at the commit in `patches/BASE.txt`. Upstream's
   own third-party components (listed in its README) keep their licenses.
 - **[Ryujinx](https://ryujinx.app)** and its continuation **[Ryubing](https://codeberg.org/Software_arch/Ryubing)**
-  (MIT): the Maxwell shader translator upstream's tools use to make SPIR-V. Downloaded by the data tool, not
-  included here.
+  (MIT): the Maxwell shader translator upstream's tools use to make SPIR-V. Built into SMW Maker's shader
+  harness (its `THIRD-PARTY.txt`), not included in this repository.
 
 ## The PS4 side
 

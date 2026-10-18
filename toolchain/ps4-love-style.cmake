@@ -25,17 +25,19 @@ add_compile_options(-march=btver2)
 # Dolphin exhausts within minutes. Link a copy of crt1.o declaring an explicit sceLibcHeapSize.
 set(PS4_LIBC_HEAP_MIB 64 CACHE STRING "System libc heap size (MiB) declared in crt1.o")
 set(PS4_CRT1 ${CMAKE_BINARY_DIR}/ps4-crt1-heap${PS4_LIBC_HEAP_MIB}.o)
-execute_process(
-  COMMAND sh ${CMAKE_CURRENT_LIST_DIR}/patch-crt1.sh ${OPENORBIS}/lib/crt1.o ${PS4_CRT1}
-          ${PS4_LIBC_HEAP_MIB}
-  RESULT_VARIABLE _ps4_crt1_result)
-if(NOT _ps4_crt1_result EQUAL 0)
-  message(FATAL_ERROR "patch-crt1.sh failed: ${_ps4_crt1_result}")
+option(PS4_MALLOC_REPLACE "Route all mallocs, system modules included, to the app heap" ON)
+if(NOT PS4_MALLOC_REPLACE)
+  execute_process(
+    COMMAND sh ${CMAKE_CURRENT_LIST_DIR}/patch-crt1.sh ${OPENORBIS}/lib/crt1.o ${PS4_CRT1}
+            ${PS4_LIBC_HEAP_MIB}
+    RESULT_VARIABLE _ps4_crt1_result)
+  if(NOT _ps4_crt1_result EQUAL 0)
+    message(FATAL_ERROR "patch-crt1.sh failed: ${_ps4_crt1_result}")
+  endif()
 endif()
 # That had no effect on hardware. Instead (PS4_MALLOC_REPLACE, default ON) link port/ps4_crt1.S,
 # a copy of crt1.o whose libc malloc-replacement table sends every malloc of the process -
 # system modules included - to our heap (ps4_replace_* in port/ps4_runtime.cpp).
-option(PS4_MALLOC_REPLACE "Route all mallocs, system modules included, to the app heap" ON)
 if(PS4_MALLOC_REPLACE)
   set(PS4_CRT1 ${CMAKE_BINARY_DIR}/ps4-crt1-malloc-replace.o)
   execute_process(
@@ -146,7 +148,7 @@ function(ps4_add_eboot target)
         OUTPUT ${out_dir}/eboot.bin
         COMMAND ${CMAKE_COMMAND} -E make_directory ${out_dir}
         COMMAND ${CMAKE_COMMAND} -E env OO_PS4_TOOLCHAIN=${OPENORBIS}
-            ${OPENORBIS}/bin/create-fself -in=$<TARGET_FILE:${target}>
+            ${OPENORBIS}/bin/create-fself${CMAKE_HOST_EXECUTABLE_SUFFIX} -in=$<TARGET_FILE:${target}>
             -out=${out_dir}/${target}.oelf --eboot ${out_dir}/eboot.bin
             --paid ${PS4_PAID} --authinfo ${PS4_AUTH_INFO}
         COMMAND ${CMAKE_COMMAND} -DOELF=${out_dir}/${target}.oelf

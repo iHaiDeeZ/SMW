@@ -29,8 +29,17 @@ bash scripts/make-pkg-from-dump.sh --game <.nsp/.xci> --prod <prod.keys> --title
 
 `make-pkg-from-dump.sh` downloads the prebuilt sysroot and RADV libraries (the [sdk-1 release](https://github.com/iHaiDeeZ/SMW/releases/tag/sdk-1),
 made by `scripts/make-sdk.sh`, checked by SHA-256), imports and recompiles your dump, builds the eboot and writes
-`<folder>/SMW-v<VERSION>.pkg`. Its work tree is `~/smw-data-tool`, shared with `make-data.sh`. This is what the
-data tool's **Build my package** runs. `scripts/fetch-pacbrew.sh` installs PacBrew's packages without pacman.
+`<folder>/SMW-v<VERSION>.pkg`. Its work tree is `~/smw-data-tool`, shared with `make-data.sh`.
+`scripts/fetch-pacbrew.sh` installs PacBrew's packages without pacman.
+
+## SMW Maker (Windows)
+
+The release's Windows app runs the same steps natively: `maker/smw_maker.py` with the tools in its `tools/` folder
+(upstream's importer built with mingw-w64, Python 3.14 with the recompiler's packages, the shader translator on
+.NET 10, LLVM 21.1.8's clang and ld.lld, CMake, Ninja, PacBrew's OpenOrbis files with `create-fself` / `create-gp4`
+built for Windows, PkgTool, the SDK). `toolchain/ps4-love-modern.cmake` uses LLVM's own tools on a Windows host.
+Maintainers make it on Linux: `maker/build-bundle.sh <dir>` (the tools, from the sources it names and checks), then
+`maker/pack.sh <dir>` (the zip, with `SMW-Maker.exe` built by Windows' own C# compiler).
 
 ## Steps
 
@@ -46,7 +55,6 @@ SMW_VERSION=01.00 scripts/package-smw.sh   # out/SMW-v01.00.pkg
 scripts/stage-data.sh                 # ~/smw-build/data-stage/SMW: copy its contents to /data/SMW over FTP, once
 ```
 
-`windows/SMW-Data-Tool.cmd` does the data part (`scripts/make-data.sh`) from Windows, without the rest.
 `SMW_BUNDLE_DATA=1 scripts/package-smw.sh` puts the game data in the package (`/app0/data`, ~4 GB more) instead;
 the runtime reads it there first. Big packages need `scripts/build-pkgtool.sh` once (a PkgTool with more room for
 PlayGo hashes) and `scripts/gp4-fix-dirs.py` (run by `make-pkg.sh`).

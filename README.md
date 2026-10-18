@@ -66,43 +66,39 @@ You bring your own game: nothing copyrighted is in this repository or its releas
 ## Getting started
 
 **You need:** a jailbroken PS4 with **GoldHEN** (developed on a launch-model PS4), an FTP connection to it, a PC
-with Windows 10 or 11 and WSL, and your own **Super Mario Bros. Wonder 1.0.0** dump (`.nsp` or `.xci`, base game)
-with your `prod.keys` and `title.keys`, all from your own Switch.
+with Windows 10 or 11 (64-bit, 16 GB of RAM recommended, ~50 GB free), and your own **Super Mario Bros. Wonder 1.0.0**
+dump (`.nsp` or `.xci`, base game) with your `prod.keys` and `title.keys`, all from your own Switch.
 
-The data tool makes both halves from your dump: the game data for `/data/SMW` and your own SMW package.
+**SMW Maker** makes both halves from your dump: the game data for `/data/SMW` and your own SMW package. It's a
+standalone Windows app: no WSL, Python or compilers to install, everything it needs is in its folder.
 
-### 1. The game data and your package
+### Making SMW with SMW Maker
 
-1. Download **`SMW-Data-Tool-vXX.XX.zip`** from the [releases page](https://github.com/iHaiDeeZ/SMW/releases/latest)
-   and unzip it.
-2. Double-click **`windows/SMW-Data-Tool.cmd`**. A window opens: press **Browse...** on each row to pick your
-   dump, `prod.keys` and `title.keys` in File Explorer (keys next to the dump are filled in for you), and a folder
-   with about 5 GB free.
-3. Tick **Build my package** too (the first time, or after an SMW update). Optionally type your PS4's FTP
-   address (for example `192.168.0.90:2121`), then press **Start**.
+1. Download **`SMW-Maker-vXX.XX.zip`** from the [releases page](https://github.com/iHaiDeeZ/SMW/releases/latest)
+   and unzip it anywhere.
+2. Open **`SMW-Maker.exe`** (it isn't signed: if Windows SmartScreen stops it, press **More info**, then
+   **Run anyway**). Press **Browse...** on each row to pick your dump, `prod.keys` and `title.keys` in
+   File Explorer (keys next to the dump are filled in for you) and the output folder. The work folder (about 40 GB,
+   its path without spaces) is filled in for you.
+3. Optionally type your PS4's FTP address (for example `192.168.0.90:2121`), then press **Start**.
 4. Wait while the log and progress bar follow along:
-   - **The game data** (20-40 minutes): the tool decrypts your dump with upstream's importer, translates the game's
-     12,751 shaders, and lays out an **`SMW`** folder.
-   - **Your package** (an hour or two, ~40 GB free on the WSL drive, 16 GB of RAM recommended): it fetches the PS4
-     toolchain (PacBrew's OpenOrbis and this project's prebuilt [SDK](https://github.com/iHaiDeeZ/SMW/releases/tag/sdk-1)),
-     recompiles the game's code from your dump and builds **`SMW-vXX.XX.pkg`** in the output folder.
+   - **The game data** (20-40 minutes): upstream's importer decrypts your dump, the game's 12,751 shaders are
+     translated, and an **`SMW`** folder is laid out.
+   - **Your package** (an hour or two on most PCs): the game's code is recompiled from your dump and built for
+     the PS4 with the bundled clang 21 and OpenOrbis toolchain into **`SMW-vXX.XX.pkg`**.
 5. With an FTP address, the `SMW` folder goes to **`/data/SMW`** and the package to **`/data/pkg`**. Otherwise copy
    the **contents** of `SMW` to `/data/SMW` and the package to `/data/pkg` yourself (FileZilla), or press
    **Upload only** later. An interrupted upload resumes where it stopped.
 6. Install the package with GoldHEN's **Package Installer** and start **SMW** from the home screen.
 
-<p align="center"><img src="docs/images/data-tool.png" alt="The SMW data tool" width="560"></p>
-
-> **First time with WSL?** Open PowerShell as administrator, run `wsl --install -d Ubuntu`, restart, open Ubuntu
-> once to create your user, then start the tool. It installs the Linux tools it needs by itself.
+<p align="center"><img src="docs/images/smw-maker.png" alt="SMW Maker" width="560"></p>
 
 The package is built from your dump because its `eboot.bin` is mostly the game's own code, recompiled. That's why
-no release can include it, and why you must never share yours. To build it by hand instead, see
+no release can include it, and why you must never share yours. On Linux, or to build it by hand, see
 **[docs/BUILDING.md](docs/BUILDING.md)**.
 
-**Updating SMW:** download the newer data tool, build the package again (the dump isn't imported twice) and install
-it on top of the old one. The game data and your saves in
-`/data/SMW` stay.
+**Updating SMW:** download the newer SMW Maker, untick the game data, build the package again (your dump isn't
+imported twice) and install it on top of the old one. The game data and your saves in `/data/SMW` stay.
 
 ## Controls
 
@@ -158,7 +154,7 @@ render, and their GPU cost doesn't fit next to the game on a PS4. FSR 1 works on
 
 Everything lives in **`/data/SMW/`**:
 
-- `analysis/`, `extract/romfs/`, `spirv/`: the game data from the data tool (your game, keep it to yourself)
+- `analysis/`, `extract/romfs/`, `spirv/`: the game data from SMW Maker (your game, keep it to yourself)
 - `user/`: your saves
 - `config.txt`: your settings (`NX_<KEY>=<value>` lines; the quick menu writes them)
 - `pipelines_*.bin`: the pipeline cache

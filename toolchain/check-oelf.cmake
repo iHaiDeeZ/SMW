@@ -4,7 +4,7 @@
 # create-fself sometimes duplicates the data segment (see ps4-love-style.cmake), and the console
 # then refuses to start the app with CE-41839-5.
 find_program(READELF NAMES llvm-readelf llvm-readelf-21 llvm-readelf-12 readelf
-    HINTS /opt/pacbrew/ps4/openorbis/bin)
+    HINTS /opt/pacbrew/ps4/openorbis/bin $ENV{SMW_LLVM}/bin)
 if (NOT READELF)
     message(WARNING "check-oelf: no readelf found, skipping the segment check")
     return()
