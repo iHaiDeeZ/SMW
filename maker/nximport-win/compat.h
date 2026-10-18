@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/types.h>
 
 // Every open() of the importer passes O_CLOEXEC: on Windows the bit that matters there is binary mode (no CR/LF
@@ -35,8 +36,17 @@ static inline ssize_t pread(int fd, void* buf, size_t n, int64_t off) {
 // fdatasync: flush the written file to disk.
 static inline int fdatasync(int fd) { return _commit(fd); }
 
-// mkdir(path, mode) and a rename() that replaces the target, as on POSIX.
-#define mkdir(path, mode) _mkdir(path)
+// mkdir(path, mode): EEXIST for a folder that is already there. The importer makes every folder of the output path in
+// turn, the drive ("H:") first, and _mkdir answers EACCES instead of EEXIST for the root of some drives.
+static inline int smw_mkdir(const char* path) {
+    DWORD a = GetFileAttributesA(path);
+    if (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY)) { errno = EEXIST; return -1; }
+    if (strlen(path) == 2 && path[1] == ':') { errno = EEXIST; return -1; }  // a drive, even when it can't be read
+    return _mkdir(path);
+}
+#define mkdir(path, mode) smw_mkdir(path)
+
+// A rename() that replaces the target, as on POSIX.
 static inline int smw_rename(const char* from, const char* to) {
     if (MoveFileExA(from, to, MOVEFILE_REPLACE_EXISTING)) return 0;
     errno = EACCES;
