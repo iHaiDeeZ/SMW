@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 761b5dd..fe87d23 100644
+index 761b5dd..032b627 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -4,6 +4,9 @@ project(SwitchGamesRecomp C CXX)
@@ -24,7 +24,15 @@ index 761b5dd..fe87d23 100644
          # Hidden visibility: calls between recompiled functions are direct, not through the PLT.
          # armv8.2-a+crypto: cpu.h's AES/SHA paths need __ARM_FEATURE_AES/SHA2 (the NDK default armv8-a has neither).
          target_compile_options(game_${mod} PRIVATE -O2 -fPIC -fvisibility=hidden -fno-semantic-interposition
-@@ -173,7 +179,23 @@ else()
+@@ -114,6 +120,7 @@ set(NX_RUNTIME_SOURCES
+     runtime/src/nvn/nvn_renderpass.cpp
+     runtime/src/nvn/nvn_gpu_busy.cpp
+     runtime/src/nvn/nvn_janitor.cpp
++    runtime/src/nvn/nvn_residency.cpp
+     runtime/src/nvn/nvn_trace.cpp
+     runtime/src/nvn/nvn_device.cpp
+     runtime/src/nvn/nvn_objects.cpp
+@@ -173,7 +180,23 @@ else()
      set(NX_VULKAN_SDK "C:/VulkanSDK/1.4.357.0" CACHE PATH "Vulkan SDK")
  endif()
  
@@ -353,18 +361,52 @@ index ee2a825..558d810 100644
  
      uint64_t tdata = 0, tdata_end = 0;
      if (tdata_range(nx_module_main, tdata, tdata_end) && tdata_end > tdata) {
+diff --git a/runtime/src/memguard_android.cpp b/runtime/src/memguard_android.cpp
+index 4056297..420ca8a 100644
+--- a/runtime/src/memguard_android.cpp
++++ b/runtime/src/memguard_android.cpp
+@@ -116,4 +116,6 @@ void start_memory_guard() {
+     }).detach();
+ }
+ 
++uint64_t direct_memory_free() { return UINT64_MAX; }  // the PS4 only (memguard_ps4.cpp)
++
+ }  // namespace nx::plat
+diff --git a/runtime/src/memguard_linux.cpp b/runtime/src/memguard_linux.cpp
+index 60c6771..f2c2a13 100644
+--- a/runtime/src/memguard_linux.cpp
++++ b/runtime/src/memguard_linux.cpp
+@@ -59,4 +59,6 @@ void start_memory_guard() {
+ 
+ uint64_t memguard_overlap_ns(uint64_t, uint64_t) { return 0; }
+ 
++uint64_t direct_memory_free() { return UINT64_MAX; }  // the PS4 only (memguard_ps4.cpp)
++
+ }  // namespace nx::plat
+diff --git a/runtime/src/memguard_mac.cpp b/runtime/src/memguard_mac.cpp
+index 98a5e98..9e5e251 100644
+--- a/runtime/src/memguard_mac.cpp
++++ b/runtime/src/memguard_mac.cpp
+@@ -54,4 +54,6 @@ void start_memory_guard() {
+ 
+ uint64_t memguard_overlap_ns(uint64_t, uint64_t) { return 0; }
+ 
++uint64_t direct_memory_free() { return UINT64_MAX; }  // the PS4 only (memguard_ps4.cpp)
++
+ }  // namespace nx::plat
 diff --git a/runtime/src/memguard_ps4.cpp b/runtime/src/memguard_ps4.cpp
 new file mode 100644
-index 0000000..dc27ec9
+index 0000000..2d23687
 --- /dev/null
 +++ b/runtime/src/memguard_ps4.cpp
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,98 @@
 +// Memory guard (PS4): what the PS4 counts is direct memory, the 4.5 GiB pool the guest's lazily mapped chunks
 +// (platform_ps4.cpp) and RADV's buffers and images both come from. Every 30 s the log gets the guest's share, the
 +// pool's use and what is left; below NX_MEM_LOW_MB (default 96) left it says so every 5 s, since running out ends
 +// in a crash (a chunk that cannot be mapped) rather than in the system closing the app.
 +#include <sys/types.h>
 +
++#include <atomic>
 +#include <chrono>
 +#include <cstdint>
 +#include <cstdlib>
@@ -380,6 +422,10 @@ index 0000000..dc27ec9
 +    "sceKernelAvailableDirectMemorySize");
 +int32_t ps4_available_flexible(size_t* size) __asm__("sceKernelAvailableFlexibleMemorySize");
 +void ps4_boot_trace(const char* line);
++}
++
++namespace nx::nvn {
++void gpu_memory_report(char* out, size_t size);  // nvn_residency.cpp
 +}
 +
 +namespace nx::plat {
@@ -401,7 +447,12 @@ index 0000000..dc27ec9
 +    largest_free = ps4_available_direct(0, off_t(total), 0x10000, &found, &size) == 0 ? size : 0;
 +}
 +
++std::atomic<uint64_t> g_direct_free{UINT64_MAX};
++
 +}  // namespace
++
++// The largest free piece of direct memory, as of the last second (the memory guard's thread measures it).
++uint64_t direct_memory_free() { return g_direct_free.load(std::memory_order_relaxed); }
 +
 +void start_memory_guard() {
 +    const char* e = std::getenv("NX_MEM_LOW_MB");
@@ -417,10 +468,12 @@ index 0000000..dc27ec9
 +    log("%s", line);
 +    std::thread([low_mb] {
 +        uint64_t ticks = 0, peak = 0;
-+        for (;;) {
-+            std::this_thread::sleep_for(std::chrono::seconds(5));
++        for (uint64_t second = 1;; second++) {
++            std::this_thread::sleep_for(std::chrono::seconds(1));
 +            uint64_t t = 0, f = 0;
 +            direct_memory(t, f);
++            g_direct_free.store(f, std::memory_order_relaxed);
++            if (second % 5) continue;
 +            uint64_t guest = ps4_lazy_mapped_bytes();
 +            if (guest > peak) peak = guest;
 +            bool low = double(f) / kMiB < low_mb;
@@ -432,6 +485,9 @@ index 0000000..dc27ec9
 +                    double(guest) / kMiB, double(peak) / kMiB, (unsigned long long)ps4_lazy_faults(),
 +                    (unsigned long long)ps4_lazy_blocks(), double(f) / kMiB, double(t) / kMiB,
 +                    double(flex) / kMiB, low ? " - LOW" : "");
++                char gpu[300];
++                nx::nvn::gpu_memory_report(gpu, sizeof gpu);
++                log("memory: %s", gpu);
 +            }
 +            if (uint64_t failed = ps4_lazy_failed())
 +                log("memory: %llu chunks could not be mapped (out of direct memory)", (unsigned long long)failed);
@@ -442,6 +498,17 @@ index 0000000..dc27ec9
 +uint64_t memguard_overlap_ns(uint64_t, uint64_t) { return 0; }
 +
 +}  // namespace nx::plat
+diff --git a/runtime/src/memguard_win.cpp b/runtime/src/memguard_win.cpp
+index 78c5edb..45b640a 100644
+--- a/runtime/src/memguard_win.cpp
++++ b/runtime/src/memguard_win.cpp
+@@ -67,4 +67,6 @@ void start_memory_guard() {
+ 
+ uint64_t memguard_overlap_ns(uint64_t, uint64_t) { return 0; }
+ 
++uint64_t direct_memory_free() { return UINT64_MAX; }  // the PS4 only (memguard_ps4.cpp)
++
+ }  // namespace nx::plat
 diff --git a/runtime/src/nvn/nvn.h b/runtime/src/nvn/nvn.h
 index ee52901..603031f 100644
 --- a/runtime/src/nvn/nvn.h
@@ -1120,6 +1187,48 @@ index 8af9918..72b41e5 100644
      switch (f) {
          case 0x95: return VK_FORMAT_B5G6R5_UNORM_PACK16;
          case 0x96:
+diff --git a/runtime/src/nvn/nvn_frames.cpp b/runtime/src/nvn/nvn_frames.cpp
+index c91843c..1d8585f 100644
+--- a/runtime/src/nvn/nvn_frames.cpp
++++ b/runtime/src/nvn/nvn_frames.cpp
+@@ -611,10 +611,17 @@ void free_retired_images(uint64_t completed) {
+         if (img->view) p_vkDestroyImageView(vk_device(), img->view, nullptr);
+         p_vkDestroyImage(vk_device(), img->image, nullptr);
+         if (img->memory) p_vkFreeMemory(vk_device(), img->memory, nullptr);
++        if (img->memory) image_memory_add(-int64_t(img->bytes));
+         img->image = VK_NULL_HANDLE, img->memory = VK_NULL_HANDLE, img->view = VK_NULL_HANDLE;
+     }
+ }
+ 
++void retire_image(std::shared_ptr<GpuImage> img) {
++    if (!img) return;
++    std::lock_guard lk(g_grave_lock);
++    g_grave.push_back({g_submitted + 1, std::move(img)});
++}
++
+ // Images of destroyed textures are freed once no submit can use them: the one being recorded now included (a replay
+ // on another thread may hold it), hence the serial after the last submitted. Before the graveyard no image was ever
+ // freed: the opening creates textures continuously and the process reached 85 GB (the machine froze).
+diff --git a/runtime/src/nvn/nvn_image.cpp b/runtime/src/nvn/nvn_image.cpp
+index 03621bd..f47bdf6 100644
+--- a/runtime/src/nvn/nvn_image.cpp
++++ b/runtime/src/nvn/nvn_image.cpp
+@@ -194,7 +194,14 @@ GpuImage* image_of(uint64_t guest) {
+     VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+     ai.allocationSize = req.size;
+     ai.memoryTypeIndex = memory_type(req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+-    if (!check(p_vkAllocateMemory(vk_device(), &ai, nullptr, &img->memory), "vkAllocateMemory")) return nullptr;
++    if (!check(p_vkAllocateMemory(vk_device(), &ai, nullptr, &img->memory), "vkAllocateMemory")) {
++        p_vkDestroyImage(vk_device(), img->image, nullptr);  // (was kept: one VkImage lost per failure)
++        img->image = VK_NULL_HANDLE;
++        residency_alloc_failed();  // textures not drawn for a while make room before the next submit
++        return nullptr;
++    }
++    img->bytes = req.size;
++    image_memory_add(int64_t(req.size));
+     p_vkBindImageMemory(vk_device(), img->image, img->memory, 0);
+     constexpr VkComponentSwizzle kSwizzle[] = {VK_COMPONENT_SWIZZLE_ZERO, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_R,
+                                                VK_COMPONENT_SWIZZLE_G,    VK_COMPONENT_SWIZZLE_B,   VK_COMPONENT_SWIZZLE_A};
 diff --git a/runtime/src/nvn/nvn_janitor.cpp b/runtime/src/nvn/nvn_janitor.cpp
 index 45e9b2a..47b2530 100644
 --- a/runtime/src/nvn/nvn_janitor.cpp
@@ -1433,6 +1542,153 @@ index 8017b2c..e081570 100644
          if (!g.fsr_logged)
              log("nvn/vk: FSR 1: %.0fx%.0f -> %ux%u (sharpness %.2f stops)", cw, ch, out_w, out_h, fsr_sharpness()),
                  g.fsr_logged = true;
+diff --git a/runtime/src/nvn/nvn_residency.cpp b/runtime/src/nvn/nvn_residency.cpp
+new file mode 100644
+index 0000000..30e55f7
+--- /dev/null
++++ b/runtime/src/nvn/nvn_residency.cpp
+@@ -0,0 +1,141 @@
++// Texture residency (SMW, PS4): the 4.5 GiB of direct memory hold the guest's memory and every GPU image. The game
++// keeps the textures of the areas it visited, and so the images: a long session (the world map, then a course's
++// Wonder) ran direct memory out, every new image failed (vkAllocateMemory -2) and the game came to a halt. So when
++// direct memory is low the images of textures no draw sampled for a while are freed, oldest first, through the grave
++// (once no submit in flight can use them). Their texels are still in guest memory: the next draw that samples one
++// makes and uploads the image again, as for a texture used the first time. Never freed: images the GPU wrote
++// (render targets, storage), ones given texels by nvnTextureWriteTexels (they are not in guest memory), ones shared
++// with another texture, and ones whose ASTC blocks are being decoded in the background.
++//   NX_EVICT_LOW_MB=<MiB>  free textures below this much free direct memory (default 400; 0: never)
++//   NX_EVICT_AGE_S=<s>     a texture not sampled for this long may go (default 10; 1 right after a failed allocation)
++#include <algorithm>
++#include <atomic>
++#include <cstdio>
++#include <cstdlib>
++#include <mutex>
++#include <shared_mutex>
++#include <unordered_set>
++#include <vector>
++
++#include "nvn.h"
++#include "nvn_vk.h"
++#include "platform.h"
++
++namespace nx::nvn {
++
++namespace {
++
++std::atomic<int64_t> g_image_bytes{0}, g_images{0};
++std::atomic<bool> g_failed{false};
++std::atomic<uint64_t> g_evicted{0}, g_evicted_bytes{0}, g_alloc_failures{0};
++constexpr double kMiB = 1024.0 * 1024.0;
++
++uint64_t env_u64(const char* name, uint64_t fallback) {
++    const char* e = std::getenv(name);
++    return e && *e ? std::strtoull(e, nullptr, 10) : fallback;
++}
++
++bool evictable(const Texture& t, const GpuImage& img) {
++    return img.image && img.memory && img.uploaded && !img.rendered && !img.texels && !img.storage &&
++           !t.has_writes.load(std::memory_order_relaxed) && !astc_job_pending(&img);
++}
++
++}  // namespace
++
++void image_memory_add(int64_t bytes) {
++    g_image_bytes.fetch_add(bytes, std::memory_order_relaxed);
++    g_images.fetch_add(bytes > 0 ? 1 : -1, std::memory_order_relaxed);
++}
++
++void residency_alloc_failed() {
++    g_alloc_failures.fetch_add(1, std::memory_order_relaxed);
++    g_failed.store(true, std::memory_order_relaxed);
++}
++
++void residency_tick() {
++    static const uint64_t low = env_u64("NX_EVICT_LOW_MB",
++#if defined(__ORBIS__)
++                                        400
++#else
++                                        0
++#endif
++                                        ) << 20;
++    static const uint64_t age_ns = env_u64("NX_EVICT_AGE_S", 10) * 1000000000ull;
++    static uint64_t submits = 0;
++    if (!low) return;
++    const bool failed = g_failed.exchange(false, std::memory_order_relaxed);
++    if (!failed && ++submits % 30) return;  // the free memory is measured once a second anyway
++    const uint64_t free_now = plat::direct_memory_free();
++    if (!failed && free_now >= low) return;
++    // Enough to be back over the line with 256 MiB to spare; after a failure at least 64 MiB whatever it says.
++    const uint64_t want = std::max<uint64_t>(free_now < low + (256ull << 20) ? low + (256ull << 20) - free_now : 0,
++                                             failed ? 64ull << 20 : 0);
++    if (!want) return;
++    const uint64_t now = plat::monotonic_ns(), min_age = failed ? 1000000000ull : age_ns;
++    struct Candidate {
++        Texture* t;
++        uint64_t sampled, bytes;
++    };
++    std::vector<Candidate> picks;
++    uint64_t freed = 0;
++    std::lock_guard lk(objects_lock());  // no texture made or destroyed meanwhile
++    {
++        std::vector<Candidate> all;
++        std::unordered_set<const GpuImage*> seen;
++        for (auto& [key, o] : objects()) {
++            auto* t = dynamic_cast<Texture*>(o.get());
++            if (!t || !t->image || t->image.use_count() != 1) continue;  // shared images stay
++            uint64_t sampled = t->last_sampled.load(std::memory_order_relaxed);
++            if (!sampled || now - sampled < min_age) continue;  // never sampled (a copy's source...): not known idle
++            if (!evictable(*t, *t->image) || !seen.insert(t->image.get()).second) continue;
++            all.push_back({t, sampled, t->image->bytes});
++        }
++        std::sort(all.begin(), all.end(), [](const Candidate& a, const Candidate& b) { return a.sampled < b.sampled; });
++        for (const Candidate& c : all) {
++            if (freed >= want) break;
++            picks.push_back(c);
++            freed += c.bytes;
++        }
++    }
++    for (const Candidate& c : picks) retire_image(std::move(c.t->image));  // made again on its next draw
++    g_evicted.fetch_add(picks.size(), std::memory_order_relaxed);
++    g_evicted_bytes.fetch_add(freed, std::memory_order_relaxed);
++    static uint64_t logged = 0;
++    if (logged++ < 20 || logged % 50 == 0)
++        log("nvn/vk: direct memory %s (%.0f MiB free): %zu textures not drawn for %.0f s or more freed, %.0f MiB "
++            "(drawn again, they are uploaded again)",
++            failed ? "ran out" : "low", double(free_now == UINT64_MAX ? 0 : free_now) / kMiB, picks.size(),
++            double(min_age) / 1e9, double(freed) / kMiB);
++}
++
++// One line for the memory guard: the images of textures by kind (uploaded from guest memory, rendered by the GPU,
++// given texels by the CPU), what is waiting in the grave, and what the residency has freed so far.
++void gpu_memory_report(char* out, size_t size) {
++    uint64_t uploaded = 0, rendered = 0, texels = 0, other = 0, n_up = 0, n_rt = 0;
++    {
++        std::shared_lock lk(objects_lock());
++        std::unordered_set<const GpuImage*> seen;
++        for (auto& [key, o] : objects()) {
++            auto* t = dynamic_cast<Texture*>(o.get());
++            if (!t || !t->image || !seen.insert(t->image.get()).second) continue;
++            const GpuImage& img = *t->image;
++            if (img.rendered || img.storage) rendered += img.bytes, n_rt++;
++            else if (img.texels) texels += img.bytes;
++            else if (img.uploaded) uploaded += img.bytes, n_up++;
++            else other += img.bytes;
++        }
++    }
++    const int64_t all = g_image_bytes.load(std::memory_order_relaxed);
++    const uint64_t live = uploaded + rendered + texels + other;
++    std::snprintf(out, size,
++                  "GPU images %.0f MiB (%lld): textures %.0f MiB (%llu), render targets %.0f MiB (%llu), CPU-written "
++                  "%.0f MiB, not filled yet %.0f MiB, freed or reused later %.0f MiB; residency freed %llu (%.0f MiB), "
++                  "%llu allocations failed",
++                  double(all) / kMiB, (long long)g_images.load(), double(uploaded) / kMiB, (unsigned long long)n_up,
++                  double(rendered) / kMiB, (unsigned long long)n_rt, double(texels) / kMiB, double(other) / kMiB,
++                  double(all > int64_t(live) ? uint64_t(all) - live : 0) / kMiB,
++                  (unsigned long long)g_evicted.load(), double(g_evicted_bytes.load()) / kMiB,
++                  (unsigned long long)g_alloc_failures.load());
++}
++
++}  // namespace nx::nvn
 diff --git a/runtime/src/nvn/nvn_sets.cpp b/runtime/src/nvn/nvn_sets.cpp
 index a114065..ec01c94 100644
 --- a/runtime/src/nvn/nvn_sets.cpp
@@ -1945,7 +2201,7 @@ index 2304437..1098b51 100644
  }
  
 diff --git a/runtime/src/nvn/nvn_upload.cpp b/runtime/src/nvn/nvn_upload.cpp
-index c221804..fc0b9be 100644
+index c221804..e636841 100644
 --- a/runtime/src/nvn/nvn_upload.cpp
 +++ b/runtime/src/nvn/nvn_upload.cpp
 @@ -1,12 +1,22 @@
@@ -2228,11 +2484,30 @@ index c221804..fc0b9be 100644
          widen_r11g11b10(linear.data(), u.ptr, linear.size() / 4);
      } else if (linear.size() >= (1u << 20) && !std::getenv("NX_STAGING_RING") && staging_wanted(linear.size())) {
          // 1 MB and up: a staging buffer of its own, so a scene load cannot wrap the ring over itself (DEBUG-2 #72).
+@@ -278,4 +448,7 @@ void upload_texture(VkCommandBuffer cb, const Texture& t, GpuImage& img, uint64_
+                              copies.data());
+ }
+ 
++// nvn_residency.cpp: an image whose ASTC blocks are being decoded in the background is not given up.
++bool astc_job_pending(const GpuImage* img) { return g_astc_jobs.count(img) != 0; }
++
+ }  // namespace nx::nvn
 diff --git a/runtime/src/nvn/nvn_vk.cpp b/runtime/src/nvn/nvn_vk.cpp
-index fac2914..5d0842f 100644
+index fac2914..ba07ada 100644
 --- a/runtime/src/nvn/nvn_vk.cpp
 +++ b/runtime/src/nvn/nvn_vk.cpp
-@@ -237,7 +237,11 @@ bool init() {
+@@ -200,7 +200,9 @@ bool init() {
+     g_features = features.features;
+     // NX_ASTC_DECODE=1|linear|srgb: the CPU decoder even where the GPU has ASTC (to compare the two on one GPU).
+     set_astc_native(g_features.textureCompressionASTC_LDR);
+-    log("nvn/vk: ASTC %s", astc_native() ? "native" : "decoded to RGBA8 at upload (no textureCompressionASTC_LDR)");
++    log("nvn/vk: ASTC %s", astc_native() ? "native"
++                           : astc_bc3()  ? "decoded at upload and kept as BC3 (no textureCompressionASTC_LDR)"
++                                         : "decoded to RGBA8 at upload (no textureCompressionASTC_LDR)");
+     log("nvn/vk: depthClamp %u, depthBiasClamp %u, depthBounds %u, depth clip control %u (extension %u)",
+         g_features.depthClamp, g_features.depthBiasClamp, g_features.depthBounds, g_depth_clip_control,
+         has_extension(dext, "VK_EXT_depth_clip_control") ? 1u : 0u);
+@@ -237,7 +239,11 @@ bool init() {
  
      // A busy submit reached 67 MB (uniforms padded to 4 KB, storage to 64 KB). Android: 128 MB, half, for an 8 GB
      // phone (docs/nvn/android-perf/MEMORY.md: the phone never filled it; big uploads have staging buffers, #72).
@@ -2245,7 +2520,7 @@ index fac2914..5d0842f 100644
      make_upload_buffer(128ull << 20);
  #else
      make_upload_buffer(256ull << 20);
-@@ -509,7 +513,8 @@ void log_timing(uint64_t frames) {
+@@ -509,7 +515,8 @@ void log_timing(uint64_t frames) {
          ms(t.fence_ns), ms(t.submit_ns > known ? t.submit_ns - known : 0), ms(t.present_ns),
          double(t.upload_bytes) / 1e6 / double(frames));
      frame_log(frames);
@@ -2255,7 +2530,15 @@ index fac2914..5d0842f 100644
      g_timing = {};
  }
  
-@@ -695,6 +700,11 @@ void gpu_present(uint64_t texture, const int32_t* crop) {
+@@ -545,6 +552,7 @@ void gpu_submit(const std::vector<std::shared_ptr<CmdList>>& lists, std::shared_
+     } else if (pipelined()) {  // what the retired submits were the last to use (they free nothing themselves)
+         free_retired_images(frame_completed());
+     }
++    residency_tick();  // direct memory low: images of textures not drawn for a while go (nvn_residency.cpp)
+     if (!begin(true)) return;
+     draw_begin_submit();
+     gpu_profile_begin(g_cb);
+@@ -695,6 +703,11 @@ void gpu_present(uint64_t texture, const int32_t* crop) {
      pi.pImageIndices = &index;
      r = p_vkQueuePresentKHR(g_queue, &pi);
      plat::frame_presented();  // cores, CPU time, present intervals (frame_stats.cpp)
@@ -2268,10 +2551,18 @@ index fac2914..5d0842f 100644
      // the swapchain's transform is not the display's (a Galaxy S23 did for Hades), a rebuild per frame.
      bool remake = r == VK_ERROR_OUT_OF_DATE_KHR;
 diff --git a/runtime/src/nvn/nvn_vk.h b/runtime/src/nvn/nvn_vk.h
-index b899dbd..a900f8d 100644
+index b899dbd..14067cf 100644
 --- a/runtime/src/nvn/nvn_vk.h
 +++ b/runtime/src/nvn/nvn_vk.h
-@@ -86,6 +86,10 @@ void pipeline_cache_save();
+@@ -32,6 +32,7 @@ struct GpuImage {
+     // without swizzle. MoltenVK returned alpha 0 for that view swizzle on a 2D-array view, so all text was invisible.
+     bool alpha_from_r = false;
+     uint32_t nvn_format = 0;  // the texture's NVN format
++    uint64_t bytes = 0;       // its device memory (nvn_residency.cpp counts it)
+ };
+ 
+ VkDevice vk_device();
+@@ -86,6 +87,10 @@ void pipeline_cache_save();
  void note_pipeline_created(uint64_t ns);
  void note_astc_decoded(uint64_t ns);
  void creation_log(uint64_t frames);
@@ -2282,7 +2573,22 @@ index b899dbd..a900f8d 100644
  Upload upload(const void* data, uint64_t size, uint64_t align);
  
  // Descriptor sets for this submit (freed when it completes).
-@@ -235,7 +239,15 @@ void zero_draws_collect();
+@@ -151,6 +156,14 @@ struct FrameTimes {
+ FrameTimes& frame_times();
+ void frame_log(uint64_t frames);  // the mode's counters, with the timing log
+ void free_retired_images(uint64_t completed);
++// nvn_frames.cpp: an image no texture uses any more, freed once no submit in flight can use it (the grave).
++void retire_image(std::shared_ptr<GpuImage> img);
++// nvn_residency.cpp: GPU memory of texture images, and freeing images of textures not drawn for a while when direct
++// memory runs low (NX_EVICT_LOW_MB, default 400 on the PS4; 0: off). residency_tick: the replay thread, before a submit.
++void image_memory_add(int64_t bytes);
++void residency_alloc_failed();
++void residency_tick();
++bool astc_job_pending(const GpuImage* img);  // nvn_upload.cpp: decoding in the background, keyed by the image
+ // A GPU-written image of a destroyed texture with the same memory and shape (nvn_frames.cpp), or null.
+ std::shared_ptr<GpuImage> reuse_image(const Texture& t);  // images of textures destroyed before submit `completed` + 1
+ 
+@@ -235,7 +248,15 @@ void zero_draws_collect();
  void zero_draws_log();
  void frame_sig_flush(uint64_t presents);  // NX_FRAME_SIG=1: the frame's draw signature, logged (nvn_draw_trace.cpp)
  void debug_snapshot(VkCommandBuffer cb, GpuImage& img, uint64_t draw);
@@ -3073,10 +3379,19 @@ index 0000000..6150a87
 +------------------------------------------------------------------------------
 +*/
 diff --git a/runtime/src/platform.h b/runtime/src/platform.h
-index fa4ac38..26a33d2 100644
+index fa4ac38..7492ef0 100644
 --- a/runtime/src/platform.h
 +++ b/runtime/src/platform.h
-@@ -40,6 +40,9 @@ bool make_dirs(const std::string& path);
+@@ -28,6 +28,8 @@ int64_t current_thread_id();  // the host OS thread id
+ // False where not implemented.
+ bool profile(const int64_t* tids, const uint64_t* const* guest_lr, size_t count, int seconds, const std::string& path);  // the host thread's name (debuggers, profilers, top)
+ uint64_t monotonic_ns();
++// PS4: the largest free piece of direct memory as of the last second (memguard_ps4.cpp); elsewhere UINT64_MAX.
++uint64_t direct_memory_free();
+ 
+ // ---- files ----
+ FILE* fopen_utf8(const std::string& path, const char* mode);
+@@ -40,6 +42,9 @@ bool make_dirs(const std::string& path);
  // ---- output ----
  void log_line(const char* line);  // stderr / logcat
  std::string data_root();
@@ -3086,7 +3401,7 @@ index fa4ac38..26a33d2 100644
  std::string setting(const std::string& key);  // a player setting: config.txt (Android), NX_<KEY> (PC); "" if unset          // where private/ lives ("private" on PC, the app's external files dir on Android)
  
  // ---- display, input, audio ----
-@@ -67,6 +70,14 @@ struct PadState {
+@@ -67,6 +72,14 @@ struct PadState {
      int32_t lx = 0, ly = 0, rx = 0, ry = 0;
  };
  void read_pad(PadState& p);  // player 1
@@ -3101,7 +3416,7 @@ index fa4ac38..26a33d2 100644
  // Touch controls to draw over the picture (touch_layout.cpp, platform_android_input.cpp): circles at x, y (0..1
  // across the landscape screen), radius r (a fraction of its height), opacity alpha. 0 where nothing is drawn.
  struct OverlayShape {
-@@ -82,6 +93,13 @@ void gpu_turbo();  // NX_GPU_TURBO=1: the Adreno GPU at its highest clock (perf_
+@@ -82,6 +95,13 @@ void gpu_turbo();  // NX_GPU_TURBO=1: the Adreno GPU at its highest clock (perf_
  // role 0: the thread that replays and presents (frame_presented ticks it); 1: the game's main thread.
  void frame_thread_tick(int role);
  void frame_presented();  // after each present to the display
