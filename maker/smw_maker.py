@@ -136,9 +136,10 @@ def memory_gb():
     return int(memory_info()[0])
 
 
-# What one compile of the recompiled code takes at its peak (the biggest code_NNN.cpp files), and what Windows and the
-# user's programs keep: the build runs as many compiles at once as fit in the memory that is free when it starts.
-JOB_GB, KEEP_GB = 1.6, 2.5
+# What one compile of the recompiled code may take (measured on Windows: 0.68 GB at the peak for the biggest
+# code_NNN.cpp files, three at once 0.98 GB; ~1.8 times that), and what Windows and the user's programs keep: the
+# build runs as many compiles at once as fit in the memory that is free when it starts.
+JOB_GB, KEEP_GB = 1.2, 2.5
 
 
 def compile_jobs():
