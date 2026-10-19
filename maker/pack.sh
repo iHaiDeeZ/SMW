@@ -47,11 +47,18 @@ Z="$OUT/SMW-Maker-v$VER.zip"
 rm -f "$Z"
 ( cd "$W/pack" && python3 - "$Z" <<'EOF'
 import os, sys, zipfile
+# One fixed date in the past for every file: zip times have no time zone, and a file dated in the future of the PC that
+# unzips it (packed in a time zone ahead of it) sends CMake and Ninja into a loop ("build.ninja still dirty").
 with zipfile.ZipFile(sys.argv[1], "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
     for root, dirs, files in os.walk("SMW-Maker"):
         dirs.sort()
         for f in sorted(files):
-            z.write(os.path.join(root, f))
+            path = os.path.join(root, f)
+            info = zipfile.ZipInfo(path, date_time=(2026, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = (os.stat(path).st_mode & 0xFFFF) << 16
+            with open(path, "rb") as fh:
+                z.writestr(info, fh.read(), compresslevel=9)
 EOF
 )
 ls -la "$Z"

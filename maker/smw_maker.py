@@ -140,6 +140,26 @@ def link_or_copy(src, dst):
         shutil.copy2(src, dst)
 
 
+def fix_future_times(*roots):
+    """Files dated in the future (unzipped from a zip packed in a time zone ahead of this PC, or a clock that was
+    wrong) make CMake regenerate build.ninja forever ("still dirty after 100 tries"): they get the current time."""
+    now = time.time()
+    n = 0
+    for root in roots:
+        for d, dirs, files in os.walk(root):
+            dirs[:] = [x for x in dirs if x != "private"]  # the game's files: made on this PC
+            for f in files:
+                p = os.path.join(d, f)
+                try:
+                    if os.stat(p).st_mtime > now + 60:
+                        os.utime(p, (now, now))
+                        n += 1
+                except OSError:
+                    pass
+    if n:
+        say(f"{n} files were dated in the future (time zone or clock): set to now")
+
+
 # ---- the work folder ------------------------------------------------------------------------------------------------
 
 class Work:
@@ -280,6 +300,7 @@ def cmd_data(a):
     w = Work(a.work)
     step(1, 4, "tools")
     say(f"SMW Maker {version()}, work folder {w.root} ({free_gb(w.root)} GB free)")
+    fix_future_times(SMW, UPSTREAM, TOOLS, w.src)
     w.prepare_source()
     step(2, 4, "import (your dump and keys)")
     w.do_import(a)
@@ -423,6 +444,7 @@ def cmd_pkg(a):
     if mem < 8:
         say("(less than 8 GB of memory: the build runs one file at a time and takes long)")
     step(2, 5, "the PS4 SDK and toolchain")
+    fix_future_times(SMW, UPSTREAM, TOOLS, w.src)
     for t in ("llvm/bin/clang" + EXE, "openorbis/lib/crt1.o", "sdk/sysroot/lib/libc++.a", "cmake/bin/ninja" + EXE):
         if not os.path.exists(tool(t)):
             fail(f"SMW Maker is missing tools/{t}: download it again")
