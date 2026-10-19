@@ -499,6 +499,19 @@ def main():
     ap.add_argument("--work", required=True)
     ap.add_argument("--version")
     a = ap.parse_args()
+    # The tools' paths go into the PS4 build's flags, which can't take spaces: from a folder with spaces in its path,
+    # run again through a junction to SMW Maker in the work folder (SMW-Maker.exe does the same).
+    if WIN and " " in MAKER:
+        link = os.path.join(os.path.abspath(a.work), "maker")
+        os.makedirs(os.path.dirname(link), exist_ok=True)
+        if not os.path.isdir(link):
+            subprocess.run(["cmd", "/c", "mklink", "/J", link, MAKER], stdout=subprocess.DEVNULL,
+                           creationflags=0x08000000)
+        if " " in link or not os.path.isfile(os.path.join(link, "smw", "maker", "smw_maker.py")):
+            fail(f"SMW Maker's folder has spaces in its path and no junction could be made at {link}: "
+                 "move SMW Maker to a folder without spaces")
+        sys.exit(subprocess.run([os.path.join(link, "tools", "python", "python.exe"), "-u",
+                                 os.path.join(link, "smw", "maker", "smw_maker.py")] + sys.argv[1:]).returncode)
     t0 = time.time()
     (cmd_data if a.what == "data" else cmd_pkg)(a)
     say(f"({(time.time() - t0) / 60:.0f} minutes)")

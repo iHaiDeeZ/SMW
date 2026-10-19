@@ -86,6 +86,8 @@ standalone Windows app: no WSL, Python or compilers to install, everything it ne
      translated, and an **`SMW`** folder is laid out.
    - **Your package** (an hour or two on most PCs): the game's code is recompiled from your dump and built for
      the PS4 with the bundled clang 21 and OpenOrbis toolchain into **`SMW-vXX.XX.pkg`**.
+     It runs as many compiles at once as fit in the memory that's free when it starts, keeping 2.5 GB for Windows,
+     at a lower priority than your other programs: the PC stays usable, and 8 GB of RAM works (just slower).
 5. With an FTP address, the `SMW` folder goes to **`/data/SMW`** and the package to **`/data/pkg`**. Otherwise copy
    the **contents** of `SMW` to `/data/SMW` and the package to `/data/pkg` yourself (FileZilla), or press
    **Upload only** later. An interrupted upload resumes where it stopped.
