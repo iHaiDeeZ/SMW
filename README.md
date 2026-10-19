@@ -184,6 +184,9 @@ Make sure the data came from version 1.0.0 of the game and that the whole `SMW` 
 
 - Only version 1.0.0 of the game is supported, without updates or DLC (upstream's target).
 - Upstream's own settings (`NX_*`, in its `docs/nvn/SWITCHES.md`) work in `config.txt` too.
+- The game's textures (ASTC, which the PS4's GPU can't read) are kept as BC3 since v00.30: a quarter of the memory
+  of plain RGBA8, which long sessions ran out of. `NX_ASTC_BC=0` in `config.txt` keeps them as RGBA8 again
+  (sharper, but expect a crash after a while).
 - Only the original PS4 has been tested so far. PS4 Pro reports are welcome.
 
 ## Thanks

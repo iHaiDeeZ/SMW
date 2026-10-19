@@ -31,6 +31,8 @@ SMW is a port. Nearly everything that makes the game run is other people's work.
   the PS4 runtime in `port/` (heap, crash and hang logs, thread placement) and the VideoOut presentation.
 - **dlmalloc** by Doug Lea (its MIT-style licence, at the top of `port/third_party/dlmalloc/malloc.c`).
 - **libjpeg-turbo** (BSD-3-Clause): the `turbojpeg.h` header in `port/third_party/turbojpeg`, with its notice.
+- **stb_dxt** by Fabian Giesen and Sean Barrett (public domain / MIT): the BC3 encoder the game's ASTC textures
+  are re-packed with (`runtime/src/nvn/stb_dxt.h` in `patches/wonder-ps4.patch`).
 
 ## In the package
 
