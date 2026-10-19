@@ -74,11 +74,14 @@ def clean_env(extra=None):
     return env
 
 
-def run(cmd, cwd=None, env=None, filt=None, log=None):
+def run(cmd, cwd=None, env=None, filt=None, log=None, background=False):
     """Runs a command; its output goes to our output line by line (through filt, which may drop or change a line)
-    and to log. Stops the pipeline when it fails."""
+    and to log. Stops the pipeline when it fails. background: at below-normal priority, which the programs it starts
+    inherit (the compiler under Ninja): the PC stays usable while it runs."""
     say("> " + " ".join(os.path.basename(str(c)) if i == 0 else str(c) for i, c in enumerate(cmd))[:300])
     flags = 0x08000000 if WIN else 0  # CREATE_NO_WINDOW
+    if WIN and background:
+        flags |= 0x00004000  # BELOW_NORMAL_PRIORITY_CLASS
     p = subprocess.Popen([str(c) for c in cmd], cwd=cwd, env=env or clean_env(), stdout=subprocess.PIPE,
                          stderr=subprocess.STDOUT, creationflags=flags)
     buf = b""
@@ -114,7 +117,8 @@ def python(*args, cwd=None):
     return [sys.executable] + list(args)
 
 
-def memory_gb():
+def memory_info():
+    """(total, available) physical memory in GB."""
     if WIN:
         class MS(ctypes.Structure):
             _fields_ = [("len", ctypes.c_ulong), ("load", ctypes.c_ulong), ("total", ctypes.c_ulonglong),
@@ -123,8 +127,29 @@ def memory_gb():
         m = MS()
         m.len = ctypes.sizeof(MS)
         ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
-        return m.total // (1 << 30)
-    return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // (1 << 30)
+        return m.total / (1 << 30), m.avail / (1 << 30)
+    page = os.sysconf("SC_PAGE_SIZE")
+    return page * os.sysconf("SC_PHYS_PAGES") / (1 << 30), page * os.sysconf("SC_AVPHYS_PAGES") / (1 << 30)
+
+
+def memory_gb():
+    return int(memory_info()[0])
+
+
+# What one compile of the recompiled code takes at its peak (the biggest code_NNN.cpp files), and what Windows and the
+# user's programs keep: the build runs as many compiles at once as fit in the memory that is free when it starts.
+JOB_GB, KEEP_GB = 1.6, 2.5
+
+
+def compile_jobs():
+    """Parallel compiles that fit the free memory, with room left for Windows: never all of the user's RAM.
+    SMW_MAKER_JOBS=<n> sets it."""
+    total, avail = memory_info()
+    cpus = os.cpu_count() or 1
+    if os.environ.get("SMW_MAKER_JOBS", "").isdigit():
+        return max(1, int(os.environ["SMW_MAKER_JOBS"])), total, avail
+    room = min(avail, total - KEEP_GB) - 1.0  # 1 GB more kept free of what is free now (it moves while we build)
+    return max(1, min(cpus, int(room // JOB_GB))), total, avail
 
 
 def free_gb(path):
@@ -267,7 +292,8 @@ def make_shaders(w):
                "--extract", os.path.join(o, "exefs")), cwd=src)
     shutil.rmtree(spirv, ignore_errors=True)
     run([tool("dotnet", "dotnet" + EXE), tool("harness", "spirv_harness.dll"), "--batch", o, "--out", spirv,
-         "--jobs", str(max(1, min(os.cpu_count() or 4, 6))), "--no-val"], cwd=src,
+         "--jobs", str(max(1, min(os.cpu_count() or 4, 6, int(memory_info()[1] - KEEP_GB) * 3))), "--no-val"], cwd=src,
+        background=True,
         filt=lambda l: l if ("shader" in l.lower() and "%" in l) or "error" in l.lower() or "done" in l.lower() else None)
     n = len([f for f in os.listdir(spirv) if f.endswith(".spv")])
     say(f"{n} shaders (12,751 expected)")
@@ -320,9 +346,11 @@ def recompile(w):
         say(f"already recompiled: {gen}")
         return
     shutil.rmtree(gen, ignore_errors=True)
+    if memory_info()[1] < 3.0:
+        say("(under 3 GB of memory free: the recompile needs about 2.5 GB, close other programs if it fails)")
     for m, base in (("main", "0x4000000000"), ("sdk", "0x4010000000")):
         run(python("-m", "recomp", os.path.join(g, "exefs", m), os.path.join(gen, m), "--name", m, "--base", base),
-            cwd=w.src)
+            cwd=w.src, background=True)
         open(os.path.join(gen, m, ".done"), "w").write("")
 
 
@@ -347,9 +375,11 @@ def build(w):
     eboot = os.path.join(b, "wonder_eboot", "eboot.bin")
     if os.path.exists(eboot):
         os.remove(eboot)  # a link that fails must not leave the last eboot behind
-    mem = memory_gb()
-    jobs = max(1, min(os.cpu_count() or 1, mem * 10 // 16))  # ~1.5 GB per compile job at the peak
-    say(f"compiling with {jobs} jobs ({mem} GB of memory; log: {os.path.join(w.root, 'build.log')})")
+    jobs, total, avail = compile_jobs()
+    say(f"compiling with {jobs} jobs at a time: {avail:.1f} of {total:.1f} GB of memory free, about {JOB_GB} GB each, "
+        f"{KEEP_GB} GB kept for Windows (log: {os.path.join(w.root, 'build.log')})")
+    if jobs == 1 and avail < JOB_GB + 1.0:
+        say("(little memory is free: close other programs, or the build may be slow or fail)")
     last = [-1]
 
     def meter(line):
@@ -366,7 +396,7 @@ def build(w):
         return line if ("error:" in line or "FAILED:" in line) else None
 
     run([tool("cmake", "bin", "ninja" + EXE), "-C", fwd(b), f"-j{jobs}"], env=env, filt=meter,
-        log=os.path.join(w.root, "build.log"))
+        log=os.path.join(w.root, "build.log"), background=True)
     if not os.path.exists(eboot):
         fail("the build made no eboot.bin")
     return eboot
